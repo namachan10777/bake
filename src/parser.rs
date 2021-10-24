@@ -1,4 +1,4 @@
-use pest::iterators::Pair;
+use pest::{iterators::Pair, Parser};
 use pest_derive::Parser;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -12,7 +12,6 @@ struct BakeParser;
 #[derive(Debug)]
 enum Error {}
 
-#[allow(unused)]
 fn parse_fqid(pair: Pair<Rule>) -> Result<crate::Fqid, Error> {
     match pair.as_rule() {
         Rule::fqid => Ok(pair
@@ -23,22 +22,19 @@ fn parse_fqid(pair: Pair<Rule>) -> Result<crate::Fqid, Error> {
     }
 }
 
-#[allow(unused)]
 fn parse_exp(pair: Pair<Rule>) -> Result<crate::Exp, Error> {
     let pair = pair.into_inner().next().unwrap();
     match pair.as_rule() {
         Rule::function => {
             let mut inner = pair.into_inner();
             let fid = parse_fqid(inner.next().unwrap())?;
-            let args = inner
-                .map(|arg| parse_exp(arg))
-                .collect::<Result<Vec<_>, _>>()?;
+            let args = inner.map(parse_exp).collect::<Result<Vec<_>, _>>()?;
             Ok(crate::Exp::Call(fid, args))
         }
         Rule::variable => Ok(Exp::Var(parse_fqid(pair.into_inner().next().unwrap())?)),
         Rule::string => {
-            let mut inner = pair.into_inner();
-            let s = inner
+            let s = pair
+                .into_inner()
                 .map(|p| match p.as_rule() {
                     Rule::string_escape => &p.as_str()[1..],
                     Rule::string_elem => p.as_str(),
@@ -52,7 +48,6 @@ fn parse_exp(pair: Pair<Rule>) -> Result<crate::Exp, Error> {
     }
 }
 
-#[allow(unused)]
 fn parse_template(pair: Pair<Rule>) -> Result<crate::Template, Error> {
     match pair.as_rule() {
         Rule::template => Ok(pair
@@ -69,10 +64,9 @@ fn parse_template(pair: Pair<Rule>) -> Result<crate::Template, Error> {
                         .collect::<Vec<_>>()
                         .join(""),
                 ))),
-                Rule::subst => Some(
-                    parse_exp(p.into_inner().next().unwrap())
-                        .map(|exp| crate::TemplateElem::Exp(exp)),
-                ),
+                Rule::subst => {
+                    Some(parse_exp(p.into_inner().next().unwrap()).map(crate::TemplateElem::Exp))
+                }
                 _ => unreachable!(),
             })
             .collect::<Result<Vec<_>, _>>()?),
@@ -276,8 +270,12 @@ pub struct Config {
 fn parse_dep(_: &str) -> Result<crate::Expand, crate::Error> {
     unimplemented!()
 }
-fn parse_command(_: &str) -> Result<crate::Template, crate::Error> {
-    unimplemented!()
+fn parse_command(src: &str) -> Result<crate::Template, crate::Error> {
+    let pair = BakeParser::parse(Rule::template, src)
+        .map_err(|e| crate::Error::SyntaxError(e.line_col))?
+        .next()
+        .unwrap();
+    Ok(parse_template(pair).unwrap())
 }
 
 fn parse_task(src: Task) -> Result<crate::Task, crate::Error> {
@@ -292,7 +290,7 @@ fn parse_task(src: Task) -> Result<crate::Task, crate::Error> {
 }
 
 pub fn parse(src: &str) -> Result<crate::Config, crate::Error> {
-    let raw: Config = serde_yaml::from_str(src).map_err(|e| crate::Error::ConfigScanError(e))?;
+    let raw: Config = serde_yaml::from_str(src).map_err(crate::Error::ConfigScanError)?;
     Ok(crate::Config {
         tasks: raw
             .tasks

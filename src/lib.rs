@@ -44,4 +44,5 @@ pub struct Config {
 pub enum Error {
     ConfigLoadError(io::Error),
     ConfigScanError(serde_yaml::Error),
+    SyntaxError(pest::error::LineColLocation),
 }

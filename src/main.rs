@@ -17,7 +17,7 @@ enum SubCommand {
 
 fn run() -> Result<(), bake::Error> {
     let opts = Opts::parse();
-    let config = fs::read_to_string("builder.yml").map_err(|e| bake::Error::ConfigLoadError(e))?;
+    let config = fs::read_to_string("builder.yml").map_err(bake::Error::ConfigLoadError)?;
     let config = bake::parser::parse(&config)?;
     match opts.subcmd {
         SubCommand::Build => {
@@ -53,6 +53,17 @@ fn main() {
         }
         Err(bake::Error::ConfigScanError(e)) => {
             print_error(&format!("Cannot parse config file due to {:?}", e))
+        }
+        Err(bake::Error::SyntaxError(pest::error::LineColLocation::Span(start, end))) => {
+            // FIXME: correct position
+            print_error(&format!(
+                "Syntax error on {}:{} - {}:{}",
+                start.0, start.1, end.0, end.1
+            ))
+        }
+        Err(bake::Error::SyntaxError(pest::error::LineColLocation::Pos((line, col)))) => {
+            // FIXME: correct position
+            print_error(&format!("Syntax error on {}:{}", line, col))
         }
     }
 }
