@@ -1,0 +1,18 @@
+WHITESPACE   = _{ " " | "\t" | NEWLINE }
+identifier    = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
+fqid          =  { identifier ~ ("." ~ identifier)* }
+function      =  { fqid ~ "(" ~ (exp ~ ("," ~ exp)*)? ~ ")" }
+string_escape = @{ "\\\"" | "\\\\" }
+string_elem   = @{ (!"\"" ~ !"\\\\" ~ !"\\\"" ~ ANY)+ }
+string        = ${ "\"" ~ (string_escape | string_elem)* ~ "\""}
+variable      =  { fqid }
+exp           =  { function | variable | string }
+array_expand  =  { "$array{" ~ exp ~ "}" }
+string_expand =  { "$string{" ~ exp ~ "}" }
+subst         = !{ "{{" ~ exp ~ "}}" }
+text_escape   = @{ "\\{" | "\\\\" }
+text_elem     = @{ (!"{{" ~ !"\\\\" ~ !"\\{" ~ ANY)+ }
+text          = ${ (text_escape | text_elem)  }
+
+template      = ${ SOI ~ (text | subst)* ~ EOI }
+expand        =  { SOI ~ (array_expand | string_expand) ~ EOI }
