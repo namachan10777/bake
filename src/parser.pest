@@ -1,4 +1,4 @@
-WHITESPACE   = _{ " " | "\t" | NEWLINE }
+WHITESPACE    = _{ " " | "\t" | NEWLINE }
 identifier    = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
 fqid          =  { identifier ~ ("." ~ identifier)* }
 function      =  { fqid ~ "(" ~ (exp ~ ("," ~ exp)*)? ~ ")" }
