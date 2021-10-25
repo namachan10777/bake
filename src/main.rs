@@ -32,7 +32,7 @@ fn run() -> Result<(), bake::Error> {
                 ))
             })?;
             let config = fs::read_to_string("bake.yml").map_err(bake::Error::ConfigLoadError)?;
-            let config = bake::Config::from_str(&config)?;
+            let config = bake::Config::from_str_src(&config)?;
             println!("{:#?}", config);
             unimplemented!()
         }

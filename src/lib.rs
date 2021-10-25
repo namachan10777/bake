@@ -175,7 +175,7 @@ fn check_keys<'a>(
             buf
         })
         .collect::<Vec<_>>();
-    if invalid_keys.len() > 0 {
+    if !invalid_keys.is_empty() {
         Err(Error::ConfigError(format!(
             "invalid keys {}",
             invalid_keys.join(", ")
@@ -219,9 +219,9 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn from_str(src: &str) -> Result<Self, Error> {
-        if let &[yaml] = &yaml_rust::YamlLoader::load_from_str(src)
-            .map_err(|e| Error::ConfigScanError(e))?
+    pub fn from_str_src(src: &str) -> Result<Self, Error> {
+        if let [yaml] = yaml_rust::YamlLoader::load_from_str(src)
+            .map_err(Error::ConfigScanError)?
             .as_slice()
         {
             let rules = yaml
@@ -247,9 +247,9 @@ impl Config {
                     .collect::<Result<HashMap<_, _>, _>>()?,
             })
         } else {
-            return Err(Error::ConfigError(
+            Err(Error::ConfigError(
                 "config must include single yaml object".to_owned(),
-            ));
+            ))
         }
     }
 }
