@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::{fs, process::exit};
+use std::{env::set_current_dir, fs, process::exit};
 use termion::color;
 
 #[derive(Parser)]
@@ -10,26 +10,36 @@ struct Opts {
 
 #[derive(Parser)]
 enum SubCommand {
-    Build,
-    Clean,
-    Graph,
+    Build(SubCommandOpts),
+    Clean(SubCommandOpts),
+    Graph(SubCommandOpts),
+}
+
+#[derive(Parser)]
+struct SubCommandOpts {
+    #[clap(short = 'C', default_value = ".")]
+    cwd: String,
 }
 
 fn run() -> Result<(), bake::Error> {
     let opts = Opts::parse();
-    let config = fs::read_to_string("builder.yml").map_err(bake::Error::ConfigLoadError)?;
-    let config = bake::parser::parse(&config)?;
     match opts.subcmd {
-        SubCommand::Build => {
-            println!("{:?}", config);
+        SubCommand::Build(opts) => {
+            set_current_dir(&opts.cwd).map_err(|_| {
+                bake::Error::RuntimeError(format!(
+                    "Cannot set current working directory to {}",
+                    opts.cwd
+                ))
+            })?;
+            let config = fs::read_to_string("bake.yml").map_err(bake::Error::ConfigLoadError)?;
+            let config = bake::Config::from_str(&config)?;
+            println!("{:#?}", config);
             unimplemented!()
         }
-        SubCommand::Clean => {
-            println!("{:?}", config);
+        SubCommand::Clean(_) => {
             unimplemented!()
         }
-        SubCommand::Graph => {
-            println!("{:?}", config);
+        SubCommand::Graph(_) => {
             unimplemented!()
         }
     }
@@ -60,6 +70,12 @@ fn main() {
                 "Syntax error on {}:{} - {}:{}",
                 start.0, start.1, end.0, end.1
             ))
+        }
+        Err(bake::Error::ConfigError(msg)) => {
+            print_error(&msg);
+        }
+        Err(bake::Error::RuntimeError(msg)) => {
+            print_error(&msg);
         }
         Err(bake::Error::SyntaxError(pest::error::LineColLocation::Pos((line, col)))) => {
             // FIXME: correct position

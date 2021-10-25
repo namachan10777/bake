@@ -33,6 +33,7 @@ name = "bake"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "linked-hash-map",
  "pest",
  "pest_derive",
  "regex",
