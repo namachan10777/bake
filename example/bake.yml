@@ -1,19 +1,18 @@
 rules:
+  # This is the fixed-rule.
   a.out:
-    # 'in_*', 'in', 'out_*' and 'out' section can take complex input.
-    in_multi:
-      # $array directive emits strings.
-      # in_multi takes array of source and treats all depends as fan-in.
-      objects: $array{ map(glob("*.c"), ext("c", "o")) }
+    # 'in' and 'out' section can take complex input.
+    in: ${ object.out }
     out: a.out
     # {{ exp }} is a template substituion
     command: gcc {{ self.in }}
   object:
-    # 'in_match' matches a single file
     # If there are 'a.c' and 'b.c', bake runs both 2 command 'gcc -c a.c' and 'gcc -c b.c' in parallel.
-    in_match: .*\.c
-    out: $text{ext("c", "o", self.in)}
-    command: gcc -c {{self.in}}
+    map_source: ${ glob("*.c") }
+    map_value:
+      in: ${source}
+      out: ${ ext("c", ".o", source) }
+      command: gcc -c {{source}}
   exe:
     in: a.out
     out: exe

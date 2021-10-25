@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::io;
+use std::collections::HashMap;
 
 pub mod parser;
 
@@ -31,14 +31,17 @@ enum Expand {
 }
 
 #[derive(Debug)]
-struct Task {
-    deps: HashMap<String, Expand>,
+struct Rule {
+    in_single: HashMap<String, Option<Exp>>,
+    in_multi: HashMap<String, Vec<Exp>>,
+    in_match: regex::Regex,
+    out: Vec<Exp>,
     command: Template,
 }
 
 #[derive(Debug)]
 pub struct Config {
-    tasks: Vec<Task>,
+    rules: Vec<Rule>,
 }
 
 pub enum Error {
