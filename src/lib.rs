@@ -1,49 +1,96 @@
-use std::io;
 use std::collections::HashMap;
+use std::io;
 
 pub mod parser;
 
 type Fqid = Vec<String>;
 
 #[derive(Debug, PartialEq)]
-enum Exp {
+pub enum Exp {
     Var(Fqid),
     Call(Fqid, Vec<Exp>),
     Str(String),
+    Template(Template),
+    Array(Vec<Exp>),
+    Undefined,
+}
+
+impl std::string::ToString for Exp {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Var(fqid) => fqid.join("."),
+            Self::Call(fqid, args) => format!(
+                "{}({})",
+                fqid.join("."),
+                args.iter()
+                    .map(|exp| exp.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Self::Str(s) => s.replace("\\", "\\\\").replace("\"", "\\\""),
+            Self::Template(template) => template
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join(""),
+            Self::Array(arr) => format!(
+                "[{}]",
+                arr.iter()
+                    .map(|exp| exp.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Self::Undefined => "<undefined>".to_owned(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
-enum TemplateElem {
+pub enum TemplateElem {
     #[allow(unused)]
     Text(String),
     #[allow(unused)]
     Exp(Exp),
 }
 
+impl std::string::ToString for TemplateElem {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Text(txt) => txt.to_owned(),
+            Self::Exp(exp) => format!("{{{{ {} }}}}", exp.to_string()),
+        }
+    }
+}
+
 type Template = Vec<TemplateElem>;
 
 #[derive(Debug, PartialEq)]
-enum Expand {
+enum Input {
     #[allow(unused)]
-    Array(Exp),
+    Single(Exp),
     #[allow(unused)]
-    String(Exp),
+    Obj(HashMap<String, Exp>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
+struct Task {
+    input: Input,
+    out: Exp,
+    command: Exp,
+}
+
+#[derive(Debug, PartialEq)]
 struct Rule {
-    in_single: HashMap<String, Option<Exp>>,
-    in_multi: HashMap<String, Vec<Exp>>,
-    in_match: regex::Regex,
-    out: Vec<Exp>,
-    command: Template,
+    source: Exp,
+    task: Task,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Config {
+    rules: HashMap<String, Rule>,
 }
 
 #[derive(Debug)]
-pub struct Config {
-    rules: Vec<Rule>,
-}
-
 pub enum Error {
     ConfigLoadError(io::Error),
     ConfigScanError(serde_yaml::Error),

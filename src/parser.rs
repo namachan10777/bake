@@ -1,7 +1,5 @@
 use pest::{iterators::Pair, Parser};
 use pest_derive::Parser;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 use crate::Exp;
 
@@ -74,18 +72,17 @@ fn parse_template(pair: Pair<Rule>) -> Result<crate::Template, Error> {
     }
 }
 
-#[allow(unused)]
-fn parse_expand(pair: Pair<Rule>) -> Result<crate::Expand, Error> {
+pub fn parse(src: &str) -> Result<crate::Exp, crate::Error> {
+    let pair = BakeParser::parse(Rule::syntax, src)
+        .map_err(|e| crate::Error::SyntaxError(e.line_col))?
+        .next()
+        .unwrap();
     match pair.as_rule() {
-        Rule::expand => {
+        Rule::syntax => {
             let pair = pair.into_inner().next().unwrap();
             match pair.as_rule() {
-                Rule::array_expand => Ok(crate::Expand::Array(parse_exp(
-                    pair.into_inner().next().unwrap(),
-                )?)),
-                Rule::string_expand => Ok(crate::Expand::String(parse_exp(
-                    pair.into_inner().next().unwrap(),
-                )?)),
+                Rule::template => Ok(crate::Exp::Template(parse_template(pair).unwrap())),
+                Rule::expand => Ok(parse_exp(pair.into_inner().next().unwrap()).unwrap()),
                 _ => unreachable!(),
             }
         }
@@ -232,70 +229,20 @@ mod test_parse_rules {
     }
 
     #[test]
-    fn test_parse_expand() {
+    fn test_parse() {
         assert_eq!(
-            parse_expand(
-                BakeParser::parse(Rule::expand, "$array{ xxx }")
-                    .unwrap()
-                    .next()
-                    .unwrap()
-            )
-            .unwrap(),
-            crate::Expand::Array(crate::Exp::Var(vec!["xxx".to_owned()]))
+            parse("{{ xxx }}").unwrap(),
+            crate::Exp::Template(vec![crate::TemplateElem::Exp(crate::Exp::Var(vec![
+                "xxx".to_owned()
+            ]))])
         );
         assert_eq!(
-            parse_expand(
-                BakeParser::parse(Rule::expand, "$string{ xxx }")
-                    .unwrap()
-                    .next()
-                    .unwrap()
-            )
-            .unwrap(),
-            crate::Expand::String(crate::Exp::Var(vec!["xxx".to_owned()]))
+            parse("${ xxx }").unwrap(),
+            crate::Exp::Var(vec!["xxx".to_owned()])
+        );
+        assert_eq!(
+            parse("xxx").unwrap(),
+            crate::Exp::Template(vec![crate::TemplateElem::Text("xxx".to_owned())])
         );
     }
-}
-
-#[derive(Serialize, Deserialize)]
-struct Task {
-    deps: HashMap<String, String>,
-    command: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Config {
-    tasks: Vec<Task>,
-}
-
-fn parse_dep(_: &str) -> Result<crate::Expand, crate::Error> {
-    unimplemented!()
-}
-fn parse_command(src: &str) -> Result<crate::Template, crate::Error> {
-    let pair = BakeParser::parse(Rule::template, src)
-        .map_err(|e| crate::Error::SyntaxError(e.line_col))?
-        .next()
-        .unwrap();
-    Ok(parse_template(pair).unwrap())
-}
-
-fn parse_task(src: Task) -> Result<crate::Task, crate::Error> {
-    Ok(crate::Task {
-        deps: src
-            .deps
-            .into_iter()
-            .map(|(k, v)| parse_dep(&v).map(|d| (k, d)))
-            .collect::<Result<HashMap<_, _>, _>>()?,
-        command: parse_command(&src.command)?,
-    })
-}
-
-pub fn parse(src: &str) -> Result<crate::Config, crate::Error> {
-    let raw: Config = serde_yaml::from_str(src).map_err(crate::Error::ConfigScanError)?;
-    Ok(crate::Config {
-        tasks: raw
-            .tasks
-            .into_iter()
-            .map(parse_task)
-            .collect::<Result<Vec<_>, _>>()?,
-    })
 }

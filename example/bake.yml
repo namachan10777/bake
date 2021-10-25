@@ -1,3 +1,4 @@
+version: 0.0.1
 rules:
   # This is the fixed-rule.
   a.out:
@@ -8,9 +9,9 @@ rules:
     command: gcc {{ self.in }}
   object:
     # If there are 'a.c' and 'b.c', bake runs both 2 command 'gcc -c a.c' and 'gcc -c b.c' in parallel.
-    map_source: ${ glob("*.c") }
-    map_value:
-      in: ${source}
+    source: ${ glob("*.c") }
+    task:
+      in: ${ source }
       out: ${ ext("c", ".o", source) }
       command: gcc -c {{source}}
   exe:
