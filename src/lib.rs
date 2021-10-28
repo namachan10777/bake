@@ -3,6 +3,7 @@ use std::io;
 use yaml_rust::Yaml;
 
 pub mod parser;
+pub mod engine;
 
 type Fqid = Vec<String>;
 
