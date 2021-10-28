@@ -1,5 +1,7 @@
 use pest::{iterators::Pair, Parser};
 use pest_derive::Parser;
+use std::collections::HashMap;
+use yaml_rust::Yaml;
 
 use crate::Exp;
 
@@ -244,5 +246,162 @@ mod test_parse_rules {
             parse("xxx").unwrap(),
             crate::Exp::Template(vec![crate::TemplateElem::Text("xxx".to_owned())])
         );
+    }
+}
+
+fn inside_out<T, E>(x: Option<Result<T, E>>) -> Result<Option<T>, E> {
+    match x {
+        Some(Ok(x)) => Ok(Some(x)),
+        Some(Err(e)) => Err(e),
+        None => Ok(None),
+    }
+}
+
+fn check_keys<'a>(
+    hash: &'a linked_hash_map::LinkedHashMap<Yaml, Yaml>,
+    allowed: &[&str],
+) -> Result<(), crate::Error> {
+    let invalid_keys = hash
+        .keys()
+        .into_iter()
+        .flat_map(|k| match k {
+            Yaml::String(s) => {
+                if allowed.contains(&s.as_str()) {
+                    None
+                } else {
+                    Some(k)
+                }
+            }
+            yaml => Some(yaml),
+        })
+        .map(|yaml| {
+            let mut buf = String::new();
+            yaml_rust::YamlEmitter::new(&mut buf).dump(yaml).unwrap();
+            buf
+        })
+        .collect::<Vec<_>>();
+    if !invalid_keys.is_empty() {
+        Err(crate::Error::ConfigError(format!(
+            "invalid keys {}",
+            invalid_keys.join(", ")
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+fn task_from_yaml(ctx: &str, yaml: &Yaml) -> Result<crate::Task, crate::Error> {
+    let hash = yaml
+        .as_hash()
+        .ok_or_else(|| crate::Error::ConfigError(format!("rules.{} must be hash", ctx)))?;
+    check_keys(hash, &["in", "out", "command"])?;
+    let input =
+        match hash
+            .get(&Yaml::String("in".to_owned()))
+            .ok_or_else(|| crate::Error::ConfigError(format!("rules.{}.in is required", ctx)))?
+        {
+            Yaml::String(s) => crate::Input::Single(parse(s.as_str()).map_err(|_| {
+                crate::Error::ConfigError(format!("Syntax error on rules.{}.in", ctx))
+            })?),
+            _ => {
+                return Err(crate::Error::ConfigError(
+                    "rules.*.in must be string".to_owned(),
+                ))
+            }
+        };
+    let command = hash.get(&Yaml::String("command".to_owned())).map(|y| {
+        y.as_str().ok_or_else(|| {
+            crate::Error::ConfigError(format!("rules.{}.command must be string", ctx))
+        })
+    });
+    let command = inside_out(command)?;
+    let command = command.map(|command| parse(command));
+    let command = inside_out(command)
+        .map_err(|_| crate::Error::ConfigError(format!("Syntax error on rules.{}.command", ctx)))?;
+    let out = match hash.get(&Yaml::String("out".to_owned())) {
+        Some(Yaml::String(s)) => Some(parse(s.as_str()).map_err(|_| {
+            crate::Error::ConfigError(format!("Syntax error on rules.{}.out", ctx))
+        })?),
+        None => None,
+        _ => {
+            return Err(crate::Error::ConfigError(
+                "rules.*.out must be string".to_owned(),
+            ))
+        }
+    };
+    match (out, command) {
+        (Some(out), Some(command)) => Ok(crate::Task::Produce {
+            input,
+            out,
+            command,
+        }),
+        (None, Some(command)) => Ok(crate::Task::Execute { input, command }),
+        (None, None) => Ok(crate::Task::Phony { input }),
+        (Some(_), None) => Err(crate::Error::ConfigError(format!(
+            "rule.{}.task: out requires command",
+            ctx
+        ))),
+    }
+}
+
+fn rule_from_yaml(ctx: &str, yaml: &Yaml) -> Result<crate::Rule, crate::Error> {
+    let hash = yaml
+        .as_hash()
+        .ok_or_else(|| crate::Error::ConfigError("rules.* must be hash".to_owned()))?;
+    if hash.contains_key(&Yaml::String("source".to_owned())) {
+        check_keys(hash, &["source", "task"])?;
+        let source = hash
+            .get(&Yaml::String("source".to_owned()))
+            .unwrap()
+            .as_str()
+            .ok_or_else(|| {
+                crate::Error::ConfigError(
+                    "rules.*.source must be parsed as a yaml string".to_owned(),
+                )
+            })?;
+        let task = hash
+            .get(&Yaml::String("task".to_owned()))
+            .ok_or_else(|| crate::Error::ConfigError(format!("rules.{}.task is required", ctx)))?;
+        let source = parse(source)
+            .map_err(|_| crate::Error::ConfigError("Cannot parse rules.*.source".to_owned()))?;
+        let task = task_from_yaml(&format!("{}.task", ctx), task)?;
+        Ok(crate::Rule::Map { source, task })
+    } else {
+        let task = task_from_yaml(ctx, yaml)?;
+        Ok(crate::Rule::Single(task))
+    }
+}
+
+pub fn config_from_str_src(src: &str) -> Result<crate::Config, crate::Error> {
+    if let [yaml] = yaml_rust::YamlLoader::load_from_str(src)
+        .map_err(crate::Error::ConfigScanError)?
+        .as_slice()
+    {
+        let rules = yaml
+            .as_hash()
+            .ok_or_else(|| crate::Error::ConfigError("root object must be hash".to_owned()))?
+            .get(&Yaml::String("rules".to_owned()))
+            .ok_or_else(|| crate::Error::ConfigError("rules is required".to_owned()))?
+            .as_hash()
+            .ok_or_else(|| crate::Error::ConfigError("rules must be hash".to_owned()))?;
+        Ok(crate::Config {
+            rules: rules
+                .into_iter()
+                .map(|(key, yaml)| {
+                    let key = key
+                        .as_str()
+                        .ok_or_else(|| {
+                            crate::Error::ConfigError("key of rules.* must be string".to_owned())
+                        })?
+                        .to_owned();
+                    let val = rule_from_yaml(&key, yaml)?;
+                    Ok((key, val))
+                })
+                .collect::<Result<HashMap<_, _>, _>>()?,
+        })
+    } else {
+        Err(crate::Error::ConfigError(
+            "config must include single yaml object".to_owned(),
+        ))
     }
 }
