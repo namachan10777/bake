@@ -1,26 +1,20 @@
 version: 0.0.1
 rules:
-  # This is the fixed-rule.
-  a.out:
-    # 'in' and 'out' section can take complex input.
-    in: ${ object.out }
-    out: a.out
-    # {{ exp }} is a template substituion
-    command: gcc {{ self.in }}
   object:
-    # If there are 'a.c' and 'b.c', bake runs both 2 command 'gcc -c a.c' and 'gcc -c b.c' in parallel.
-    source: ${ glob("*.c") }
+    source: ${ std.glob("*.c") }
     task:
       in: ${ source }
-      out: ${ ext("c", ".o", source) }
+      out: ${ std.ext("c", ".o", source) }
       command: gcc -c {{source}}
+  a.out:
+    in: ${ rules.object.out }
+    out: a.out
+    command: gcc {{ self.in }}
   exe:
     in: a.out
     out: exe
-    # Command can be multi-line.
     command: |
       strip a.out
       mv a.out exe
-  # If you don't specify out, it become a PHONY target.
   default:
     in: a.out
