@@ -82,6 +82,7 @@ impl std::string::ToString for TemplateElem {
 }
 
 type Template = Vec<TemplateElem>;
+type TemplateRef<'a> = &'a [TemplateElem];
 
 #[derive(Debug, PartialEq)]
 enum Input {

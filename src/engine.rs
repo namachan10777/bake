@@ -198,7 +198,7 @@ fn take_val<'a>(env: &'a Env, fqid: &crate::Fqid) -> Result<&'a Val, Error> {
     )
 }
 
-fn eval_template(env: &Env, template: &crate::Template) -> Result<String, Error> {
+fn eval_template(env: &Env, template: crate::TemplateRef) -> Result<String, Error> {
     Ok(template
         .iter()
         .map(|e| match e {
@@ -260,15 +260,15 @@ fn apply_join(args: &[Val]) -> Result<Val, Error> {
 }
 
 fn apply_function(_: &Env, f: &Function, args: &[Val]) -> Result<Val, Error> {
-    if f.argc > args.len() {
-        return Ok(Val::Function(f.clone(), args.to_vec()));
-    } else if f.argc < args.len() {
-        return Err(Error::TooManyArgument(f.id));
-    }
-    match f.id {
-        FunId::Ext => apply_ext(args),
-        FunId::Glob => apply_glob(args),
-        FunId::Join => apply_join(args),
+    use std::cmp::Ordering;
+    match f.argc.cmp(&args.len()) {
+        Ordering::Equal => match f.id {
+            FunId::Ext => apply_ext(args),
+            FunId::Glob => apply_glob(args),
+            FunId::Join => apply_join(args),
+        },
+        Ordering::Greater => Ok(Val::Function(f.clone(), args.to_vec())),
+        Ordering::Less => Err(Error::TooManyArgument(f.id)),
     }
 }
 
