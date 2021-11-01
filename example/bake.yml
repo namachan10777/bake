@@ -4,7 +4,7 @@ rules:
     source: ${ std.glob("*.c") }
     task:
       in: ${ source }
-      out: ${ std.ext("c", ".o", source) }
+      out: ${ std.ext("c", "o", source) }
       command: gcc -c {{source}}
   a.out:
     in: ${ tasks.object.out }
