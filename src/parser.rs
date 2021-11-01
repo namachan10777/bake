@@ -13,10 +13,12 @@ enum Error {}
 
 fn parse_fqid(pair: Pair<Rule>) -> Result<crate::Fqid, Error> {
     match pair.as_rule() {
-        Rule::fqid => Ok(pair
-            .into_inner()
-            .map(|p| p.as_str().to_owned())
-            .collect::<Vec<_>>()),
+        Rule::fqid => Ok(crate::Fqid {
+            body: pair
+                .into_inner()
+                .map(|p| p.as_str().to_owned())
+                .collect::<Vec<_>>(),
+        }),
         _ => unreachable!(),
     }
 }
@@ -100,7 +102,7 @@ mod test_parse_rules {
     fn test_fqid() {
         assert_eq!(
             parse_fqid(BakeParser::parse(Rule::fqid, "a").unwrap().next().unwrap()).unwrap(),
-            vec!["a".to_owned()]
+            crate::Fqid::new(&["a"])
         );
         assert_eq!(
             parse_fqid(
@@ -110,7 +112,7 @@ mod test_parse_rules {
                     .unwrap()
             )
             .unwrap(),
-            vec!["a".to_owned(), "b".to_owned()]
+            crate::Fqid::new(&["a", "b"]),
         );
         assert_eq!(
             parse_fqid(
@@ -120,7 +122,7 @@ mod test_parse_rules {
                     .unwrap()
             )
             .unwrap(),
-            vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]
+            crate::Fqid::new(&["a", "b", "c"]),
         );
     }
 
@@ -128,7 +130,7 @@ mod test_parse_rules {
     fn test_exp() {
         assert_eq!(
             parse_exp(BakeParser::parse(Rule::exp, "xxx").unwrap().next().unwrap()).unwrap(),
-            crate::Exp::Var(vec!["xxx".to_owned()])
+            crate::Exp::Var(crate::Fqid::new(&["xxx"]))
         );
         assert_eq!(
             parse_exp(
@@ -158,7 +160,7 @@ mod test_parse_rules {
                     .unwrap()
             )
             .unwrap(),
-            crate::Exp::Var(vec!["xxx".to_owned(), "yyy".to_owned()])
+            crate::Exp::Var(crate::Fqid::new(&["xxx", "yyy"]))
         );
         assert_eq!(
             parse_exp(
@@ -168,7 +170,7 @@ mod test_parse_rules {
                     .unwrap()
             )
             .unwrap(),
-            crate::Exp::Call(vec!["fff".to_owned()], Vec::new())
+            crate::Exp::Call(crate::Fqid::new(&["fff"]), Vec::new())
         );
         assert_eq!(
             parse_exp(
@@ -179,8 +181,8 @@ mod test_parse_rules {
             )
             .unwrap(),
             crate::Exp::Call(
-                vec!["fff".to_owned()],
-                vec![crate::Exp::Var(vec!["xxx".to_owned()])]
+                crate::Fqid::new(&["fff"]),
+                vec![crate::Exp::Var(crate::Fqid::new(&["xxx"]))]
             )
         );
         assert_eq!(
@@ -192,10 +194,10 @@ mod test_parse_rules {
             )
             .unwrap(),
             crate::Exp::Call(
-                vec!["fff".to_owned()],
+                crate::Fqid::new(&["fff"]),
                 vec![
-                    crate::Exp::Var(vec!["xxx".to_owned()]),
-                    crate::Exp::Var(vec!["yyy".to_owned()])
+                    crate::Exp::Var(crate::Fqid::new(&["xxx"])),
+                    crate::Exp::Var(crate::Fqid::new(&["yyy"]))
                 ]
             )
         );
@@ -223,7 +225,7 @@ mod test_parse_rules {
             .unwrap(),
             vec![
                 crate::TemplateElem::Text("xxx".to_owned()),
-                crate::TemplateElem::Exp(crate::Exp::Var(vec!["yyy".to_owned()])),
+                crate::TemplateElem::Exp(crate::Exp::Var(crate::Fqid::new(&["yyy"]))),
                 crate::TemplateElem::Text("zzz".to_owned())
             ]
         );
@@ -233,13 +235,13 @@ mod test_parse_rules {
     fn test_parse() {
         assert_eq!(
             parse("{{ xxx }}").unwrap(),
-            crate::Exp::Template(vec![crate::TemplateElem::Exp(crate::Exp::Var(vec![
-                "xxx".to_owned()
-            ]))])
+            crate::Exp::Template(vec![crate::TemplateElem::Exp(crate::Exp::Var(
+                crate::Fqid::new(&["xxx"])
+            ))])
         );
         assert_eq!(
             parse("${ xxx }").unwrap(),
-            crate::Exp::Var(vec!["xxx".to_owned()])
+            crate::Exp::Var(crate::Fqid::new(&["xxx"]))
         );
         assert_eq!(
             parse("xxx").unwrap(),

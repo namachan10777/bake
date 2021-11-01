@@ -1,10 +1,28 @@
 use std::collections::HashMap;
+use std::fmt::write;
 use std::io;
 
 pub mod engine;
 pub mod parser;
 
-type Fqid = Vec<String>;
+#[derive(PartialEq, Clone)]
+pub struct Fqid {
+    pub body: Vec<String>,
+}
+
+impl Fqid {
+    pub fn new(fqid: &[&str]) -> Self {
+        Self {
+            body: fqid.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+        }
+    }
+}
+
+impl std::fmt::Debug for Fqid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write(f, format_args!("Fqid({})", self.body.join(".")))
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Exp {
@@ -19,10 +37,10 @@ pub enum Exp {
 impl std::string::ToString for Exp {
     fn to_string(&self) -> String {
         match self {
-            Self::Var(fqid) => fqid.join("."),
+            Self::Var(fqid) => fqid.body.join("."),
             Self::Call(fqid, args) => format!(
                 "{}({})",
-                fqid.join("."),
+                fqid.body.join("."),
                 args.iter()
                     .map(|exp| exp.to_string())
                     .collect::<Vec<_>>()

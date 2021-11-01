@@ -179,7 +179,7 @@ pub enum Error {
 }
 
 fn take_val<'a>(env: &'a Env, fqid: &crate::Fqid) -> Result<&'a Val, Error> {
-    let mut id = fqid.iter();
+    let mut id = fqid.body.iter();
     let global_prefix = id.next().ok_or(Error::EmptyIdentifier)?;
     id.fold(
         env.vars
