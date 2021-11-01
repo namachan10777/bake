@@ -4,6 +4,7 @@ use std::io;
 
 pub mod engine;
 pub mod parser;
+pub mod util;
 
 #[derive(PartialEq, Clone)]
 pub struct Fqid {
