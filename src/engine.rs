@@ -28,27 +28,36 @@ pub enum Val {
 }
 
 impl<'a> Val {
-    fn as_list(&'a self) -> Option<&'a Vec<Val>> {
+    fn as_list(&'a self) -> Result<&'a Vec<Val>, Error> {
         if let Val::List(l) = self {
-            Some(l)
+            Ok(l)
         } else {
-            None
+            Err(Error::MismatchedType {
+                expected: Type::List(Box::new(Type::Any)),
+                real: self.type_of(),
+            })
         }
     }
 
-    fn as_str(&'a self) -> Option<&'a str> {
+    fn as_str(&'a self) -> Result<&'a str, Error> {
         if let Val::String(s) = self {
-            Some(s)
+            Ok(s)
         } else {
-            None
+            Err(Error::MismatchedType {
+                expected: Type::String,
+                real: self.type_of(),
+            })
         }
     }
 
-    fn as_map(&'a self) -> Option<&'a HashMap<String, Val>> {
+    fn as_map(&'a self) -> Result<&'a HashMap<String, Val>, Error> {
         if let Val::Map(map) = self {
-            Some(map)
+            Ok(map)
         } else {
-            None
+            Err(Error::MismatchedType {
+                expected: Type::Map,
+                real: self.type_of(),
+            })
         }
     }
 
@@ -197,7 +206,7 @@ fn eval_template(env: &Env, template: &crate::Template) -> Result<String, Error>
             crate::TemplateElem::Exp(e) => eval_exp(env, e)?
                 .as_str()
                 .map(|s| s.to_owned())
-                .ok_or(Error::TemplateElemMustBeString),
+                .map_err(|_| Error::TemplateElemMustBeString),
         })
         .collect::<Result<Vec<_>, _>>()?
         .join(""))
@@ -219,25 +228,12 @@ fn apply_function(_: &Env, f: &Function, args: &[Val]) -> Result<Val, Error> {
     }
     match f.id {
         FunId::Ext => {
-            let ext_from = &args[0].as_str().ok_or_else(|| Error::MismatchedType {
-                expected: Type::String,
-                real: args[0].type_of(),
-            })?;
-            let ext_to = &args[1].as_str().ok_or_else(|| Error::MismatchedType {
-                expected: Type::String,
-                real: args[0].type_of(),
-            })?;
+            let ext_from = &args[0].as_str()?;
+            let ext_to = &args[1].as_str()?;
             match &args[2] {
                 Val::List(l) => l
                     .iter()
-                    .map(|s| {
-                        s.as_str()
-                            .ok_or(Error::MismatchedType {
-                                expected: Type::String,
-                                real: Type::Any,
-                            })
-                            .map(|file| change_ext(ext_from, ext_to, file))
-                    })
+                    .map(|s| s.as_str().map(|file| change_ext(ext_from, ext_to, file)))
                     .collect::<Result<Vec<_>, _>>()
                     .map(Val::List),
                 Val::String(file) => Ok(change_ext(ext_from, ext_to, file)),
@@ -248,11 +244,7 @@ fn apply_function(_: &Env, f: &Function, args: &[Val]) -> Result<Val, Error> {
             }
         }
         FunId::Glob => {
-            let files = glob::glob(args[0].as_str().ok_or(Error::MismatchedType {
-                expected: Type::String,
-                real: Type::Any,
-            })?)
-            .map_err(|_| Error::CannotTakeGlob)?;
+            let files = glob::glob(args[0].as_str()?).map_err(|_| Error::CannotTakeGlob)?;
             // TODO: to_string_lossy -> to_str
             files
                 .map(|path| {
@@ -264,23 +256,11 @@ fn apply_function(_: &Env, f: &Function, args: &[Val]) -> Result<Val, Error> {
         }
         FunId::Join => {
             let input = args[0]
-                .as_list()
-                .ok_or(Error::MismatchedType {
-                    expected: Type::List(Box::new(Type::String)),
-                    real: args[0].type_of(),
-                })?
+                .as_list()?
                 .iter()
-                .map(|s| {
-                    s.as_str().ok_or(Error::MismatchedType {
-                        expected: Type::String,
-                        real: Type::Any,
-                    })
-                })
+                .map(|s| s.as_str())
                 .collect::<Result<Vec<_>, _>>()?;
-            let separator = args[1].as_str().ok_or(Error::MismatchedType {
-                expected: Type::String,
-                real: args[1].type_of(),
-            })?;
+            let separator = args[1].as_str()?;
             Ok(Val::String(input.join(separator)))
         }
     }
@@ -349,10 +329,7 @@ fn eval_input(env: &mut Env, input: &crate::Input) -> Result<EvaluatedInput, Err
         crate::Input::Obj(hash) => EvaluatedInput::Hash(
             hash.iter()
                 .map(|(key, val)| {
-                    let input = eval_exp(env, val)?
-                        .as_str()
-                        .ok_or(Error::InputMustBeStringHashOrString)?
-                        .to_owned();
+                    let input = eval_exp(env, val)?.as_str()?.to_owned();
                     Ok((key.to_owned(), input))
                 })
                 .collect::<Result<HashMap<_, _>, _>>()?,
@@ -361,20 +338,12 @@ fn eval_input(env: &mut Env, input: &crate::Input) -> Result<EvaluatedInput, Err
             Val::String(s) => EvaluatedInput::Single(s),
             Val::List(l) => EvaluatedInput::List(
                 l.into_iter()
-                    .map(|v| {
-                        v.as_str()
-                            .ok_or(Error::InputMustBeStringHashOrString)
-                            .map(|s| s.to_owned())
-                    })
+                    .map(|v| v.as_str().map(|s| s.to_owned()))
                     .collect::<Result<Vec<_>, _>>()?,
             ),
             Val::Map(hash) => EvaluatedInput::Hash(
                 hash.into_iter()
-                    .map(|(k, v)| {
-                        v.as_str()
-                            .ok_or(Error::InputMustBeStringHashOrString)
-                            .map(|s| (k, s.to_owned()))
-                    })
+                    .map(|(k, v)| v.as_str().map(|s| (k, s.to_owned())))
                     .collect::<Result<HashMap<_, _>, _>>()?,
             ),
             _ => return Err(Error::InputMustBeStringHashOrString),
@@ -391,10 +360,7 @@ fn eval_task(env: &mut Env, task: &crate::Task) -> Result<(Task, Val), Error> {
                 "in".to_owned() => input.clone().convert_to_val(),
             });
             env.vars.insert("self".to_owned(), task_vars.clone());
-            let command = eval_exp(env, command)?
-                .as_str()
-                .ok_or(Error::CommandMustBeString)?
-                .to_owned();
+            let command = eval_exp(env, command)?.as_str()?.to_owned();
             task_vars
                 .as_map_mut()
                 .unwrap()
@@ -438,11 +404,7 @@ fn eval_task(env: &mut Env, task: &crate::Task) -> Result<(Task, Val), Error> {
             let output = match eval_exp(env, out)? {
                 Val::List(l) => l
                     .into_iter()
-                    .map(|s| {
-                        s.as_str()
-                            .map(|s| s.to_owned())
-                            .ok_or(Error::OutputMustBeStringOrStringList)
-                    })
+                    .map(|s| s.as_str().map(|s| s.to_owned()))
                     .collect::<Result<HashSet<_>, _>>()?,
                 Val::String(s) => hashset![s],
                 _ => return Err(Error::OutputMustBeStringOrStringList),
@@ -458,10 +420,7 @@ fn eval_task(env: &mut Env, task: &crate::Task) -> Result<(Task, Val), Error> {
                 "out".to_owned() => output_val,
             });
             env.vars.insert("self".to_owned(), task_vars.clone());
-            let command = eval_exp(env, command)?
-                .as_str()
-                .ok_or(Error::CommandMustBeString)?
-                .to_owned();
+            let command = eval_exp(env, command)?.as_str()?.to_owned();
             task_vars
                 .as_map_mut()
                 .unwrap()
@@ -493,14 +452,7 @@ fn flatten_as_string_list(val: Vec<Val>) -> Result<Vec<Val>, Error> {
         .map(|v| match v {
             Val::List(l) => l
                 .into_iter()
-                .map(|s| {
-                    s.as_str()
-                        .ok_or(Error::MismatchedType {
-                            expected: Type::String,
-                            real: Type::Any,
-                        })
-                        .map(|s| Val::String(s.to_owned()))
-                })
+                .map(|s| s.as_str().map(|s| Val::String(s.to_owned())))
                 .collect::<Result<Vec<_>, _>>(),
             Val::String(s) => Ok(vec![Val::String(s)]),
             _ => Err(Error::MismatchedType {
@@ -527,7 +479,7 @@ pub fn eval(env: &mut Env, config: &crate::Config) -> Result<Vec<Task>, Error> {
             }
             crate::Rule::Map { source, task } => {
                 let sources = eval_exp(env, source)?;
-                let sources = sources.as_list().ok_or(Error::SourceMustBeStringList)?;
+                let sources = sources.as_list()?;
                 if !sources.iter().all(|val| matches!(val, Val::String(_))) {
                     return Err(Error::SourceMustBeStringList);
                 }
