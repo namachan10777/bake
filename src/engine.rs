@@ -129,6 +129,7 @@ pub type Input = HashSet<String>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Task {
+    pub name: String,
     pub input: Input,
     pub output: Output,
     pub command: Option<String>,
@@ -358,11 +359,13 @@ fn eval_input(env: &mut Env, input: &crate::Input) -> Result<EvaluatedInput, Err
     Ok(input)
 }
 
+type TaskSource = (Input, Output, Option<String>);
+
 fn eval_execute_task(
     env: &mut Env,
     input: &crate::Input,
     command: &crate::Exp,
-) -> Result<(Task, Val), Error> {
+) -> Result<(TaskSource, Val), Error> {
     let input = eval_input(env, input)?;
     let mut task_vars = Val::Map(hashmap! {
         "in".to_owned() => input.clone().convert_to_val(),
@@ -374,27 +377,22 @@ fn eval_execute_task(
         .unwrap()
         .insert("command".to_owned(), Val::String(command.clone()));
     Ok((
-        Task {
-            input: input.convert_to_hashset(),
-            command: Some(command),
-            output: HashSet::new(),
-        },
+        (input.convert_to_hashset(), HashSet::new(), Some(command)),
         task_vars,
     ))
 }
 
-fn eval_phony_task(env: &mut Env, input: &crate::Input) -> Result<(Task, Val), Error> {
+fn eval_phony_task(
+    env: &mut Env,
+    input: &crate::Input,
+) -> Result<(TaskSource, Val), Error> {
     let input = eval_input(env, input)?;
     let task_vars = Val::Map(hashmap! {
         "in".to_owned() => input.clone().convert_to_val(),
     });
     env.vars.insert("self".to_owned(), task_vars.clone());
     Ok((
-        Task {
-            input: input.convert_to_hashset(),
-            command: None,
-            output: HashSet::new(),
-        },
+        (input.convert_to_hashset(), HashSet::new(), None),
         task_vars,
     ))
 }
@@ -404,7 +402,7 @@ fn eval_produce_task(
     input: &crate::Input,
     out: &crate::Exp,
     command: &crate::Exp,
-) -> Result<(Task, Val), Error> {
+) -> Result<(TaskSource, Val), Error> {
     let input = eval_input(env, input)?;
     env.vars.insert(
         "self".to_owned(),
@@ -437,16 +435,15 @@ fn eval_produce_task(
         .unwrap()
         .insert("command".to_owned(), Val::String(command.clone()));
     Ok((
-        Task {
-            input: input.convert_to_hashset(),
-            command: Some(command),
-            output,
-        },
+        (input.convert_to_hashset(), output, Some(command)),
         task_vars,
     ))
 }
 
-fn eval_task(env: &mut Env, task: &crate::Task) -> Result<(Task, Val), Error> {
+fn eval_task(
+    env: &mut Env,
+    task: &crate::Task,
+) -> Result<(TaskSource, Val), Error> {
     match task {
         crate::Task::Execute { input, command } => eval_execute_task(env, input, command),
         crate::Task::Phony { input } => eval_phony_task(env, input),
@@ -493,10 +490,15 @@ pub fn eval(env: &mut Env, config: &crate::Config) -> Result<Vec<Task>, Error> {
         .iter()
         .map(|(name, rule)| match rule {
             crate::Rule::Single(task) => {
-                let (task, emmited) = eval_task(env, task)?;
+                let ((input, output, command), emmited) = eval_task(env, task)?;
                 env.unregister_self();
                 insert_emmited_task_variable(env, name, emmited);
-                Ok(vec![task])
+                Ok(vec![Task {
+                    name: name.to_owned(),
+                    input,
+                    output,
+                    command,
+                }])
             }
             crate::Rule::Map { source, task } => {
                 let sources = eval_exp(env, source)?;
@@ -514,7 +516,7 @@ pub fn eval(env: &mut Env, config: &crate::Config) -> Result<Vec<Task>, Error> {
                     })
                     .collect::<Result<Vec<_>, _>>()?
                     .into_iter()
-                    .unzip::<Task, Val, Vec<Task>, Vec<Val>>();
+                    .unzip::<_, _, Vec<_>, Vec<_>>();
                 let emmited = match task {
                     crate::Task::Produce {
                         input: _,
@@ -568,7 +570,15 @@ pub fn eval(env: &mut Env, config: &crate::Config) -> Result<Vec<Task>, Error> {
                     }
                 };
                 insert_emmited_task_variable(env, name.as_str(), Val::Map(emmited));
-                Ok(tasks)
+                Ok(tasks
+                    .into_iter()
+                    .map(|(input, output, command)| Task {
+                        name: name.to_owned(),
+                        input,
+                        output,
+                        command,
+                    })
+                    .collect::<Vec<_>>())
             }
         })
         .collect::<Result<Vec<_>, _>>();
