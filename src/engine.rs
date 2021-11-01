@@ -220,6 +220,45 @@ fn change_ext(from: &str, to: &str, file: &str) -> Val {
     }
 }
 
+fn apply_ext(args: &[Val]) -> Result<Val, Error> {
+    let ext_from = &args[0].as_str()?;
+    let ext_to = &args[1].as_str()?;
+    match &args[2] {
+        Val::List(l) => l
+            .iter()
+            .map(|s| s.as_str().map(|file| change_ext(ext_from, ext_to, file)))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Val::List),
+        Val::String(file) => Ok(change_ext(ext_from, ext_to, file)),
+        v => Err(Error::MismatchedType {
+            expected: Type::Or(vec![Type::List(Box::new(Type::String)), Type::String]),
+            real: v.type_of(),
+        }),
+    }
+}
+
+fn apply_glob(args: &[Val]) -> Result<Val, Error> {
+    let files = glob::glob(args[0].as_str()?).map_err(|_| Error::CannotTakeGlob)?;
+    // TODO: to_string_lossy -> to_str
+    files
+        .map(|path| {
+            path.map(|p| Val::String(p.to_string_lossy().into_owned()))
+                .map_err(|_| Error::CannotTakeGlob)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Val::List)
+}
+
+fn apply_join(args: &[Val]) -> Result<Val, Error> {
+    let input = args[0]
+        .as_list()?
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Result<Vec<_>, _>>()?;
+    let separator = args[1].as_str()?;
+    Ok(Val::String(input.join(separator)))
+}
+
 fn apply_function(_: &Env, f: &Function, args: &[Val]) -> Result<Val, Error> {
     if f.argc > args.len() {
         return Ok(Val::Function(f.clone(), args.to_vec()));
@@ -227,42 +266,9 @@ fn apply_function(_: &Env, f: &Function, args: &[Val]) -> Result<Val, Error> {
         return Err(Error::TooManyArgument(f.id));
     }
     match f.id {
-        FunId::Ext => {
-            let ext_from = &args[0].as_str()?;
-            let ext_to = &args[1].as_str()?;
-            match &args[2] {
-                Val::List(l) => l
-                    .iter()
-                    .map(|s| s.as_str().map(|file| change_ext(ext_from, ext_to, file)))
-                    .collect::<Result<Vec<_>, _>>()
-                    .map(Val::List),
-                Val::String(file) => Ok(change_ext(ext_from, ext_to, file)),
-                v => Err(Error::MismatchedType {
-                    expected: Type::Or(vec![Type::List(Box::new(Type::String)), Type::String]),
-                    real: v.type_of(),
-                }),
-            }
-        }
-        FunId::Glob => {
-            let files = glob::glob(args[0].as_str()?).map_err(|_| Error::CannotTakeGlob)?;
-            // TODO: to_string_lossy -> to_str
-            files
-                .map(|path| {
-                    path.map(|p| Val::String(p.to_string_lossy().into_owned()))
-                        .map_err(|_| Error::CannotTakeGlob)
-                })
-                .collect::<Result<Vec<_>, _>>()
-                .map(Val::List)
-        }
-        FunId::Join => {
-            let input = args[0]
-                .as_list()?
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Result<Vec<_>, _>>()?;
-            let separator = args[1].as_str()?;
-            Ok(Val::String(input.join(separator)))
-        }
+        FunId::Ext => apply_ext(args),
+        FunId::Glob => apply_glob(args),
+        FunId::Join => apply_join(args),
     }
 }
 
@@ -352,88 +358,103 @@ fn eval_input(env: &mut Env, input: &crate::Input) -> Result<EvaluatedInput, Err
     Ok(input)
 }
 
+fn eval_execute_task(
+    env: &mut Env,
+    input: &crate::Input,
+    command: &crate::Exp,
+) -> Result<(Task, Val), Error> {
+    let input = eval_input(env, input)?;
+    let mut task_vars = Val::Map(hashmap! {
+        "in".to_owned() => input.clone().convert_to_val(),
+    });
+    env.vars.insert("self".to_owned(), task_vars.clone());
+    let command = eval_exp(env, command)?.as_str()?.to_owned();
+    task_vars
+        .as_map_mut()
+        .unwrap()
+        .insert("command".to_owned(), Val::String(command.clone()));
+    Ok((
+        Task {
+            input: input.convert_to_hashset(),
+            command: Some(command),
+            output: HashSet::new(),
+        },
+        task_vars,
+    ))
+}
+
+fn eval_phony_task(env: &mut Env, input: &crate::Input) -> Result<(Task, Val), Error> {
+    let input = eval_input(env, input)?;
+    let task_vars = Val::Map(hashmap! {
+        "in".to_owned() => input.clone().convert_to_val(),
+    });
+    env.vars.insert("self".to_owned(), task_vars.clone());
+    Ok((
+        Task {
+            input: input.convert_to_hashset(),
+            command: None,
+            output: HashSet::new(),
+        },
+        task_vars,
+    ))
+}
+
+fn eval_produce_task(
+    env: &mut Env,
+    input: &crate::Input,
+    out: &crate::Exp,
+    command: &crate::Exp,
+) -> Result<(Task, Val), Error> {
+    let input = eval_input(env, input)?;
+    env.vars.insert(
+        "self".to_owned(),
+        Val::Map(hashmap! {
+            "input".to_owned() => input.clone().convert_to_val(),
+        }),
+    );
+    let output = match eval_exp(env, out)? {
+        Val::List(l) => l
+            .into_iter()
+            .map(|s| s.as_str().map(|s| s.to_owned()))
+            .collect::<Result<HashSet<_>, _>>()?,
+        Val::String(s) => hashset![s],
+        _ => return Err(Error::OutputMustBeStringOrStringList),
+    };
+    let output_val = Val::List(
+        output
+            .iter()
+            .map(|s| Val::String(s.to_owned()))
+            .collect::<Vec<_>>(),
+    );
+    let mut task_vars = Val::Map(hashmap! {
+        "in".to_owned() => input.clone().convert_to_val(),
+        "out".to_owned() => output_val,
+    });
+    env.vars.insert("self".to_owned(), task_vars.clone());
+    let command = eval_exp(env, command)?.as_str()?.to_owned();
+    task_vars
+        .as_map_mut()
+        .unwrap()
+        .insert("command".to_owned(), Val::String(command.clone()));
+    Ok((
+        Task {
+            input: input.convert_to_hashset(),
+            command: Some(command),
+            output,
+        },
+        task_vars,
+    ))
+}
+
 fn eval_task(env: &mut Env, task: &crate::Task) -> Result<(Task, Val), Error> {
     match task {
-        crate::Task::Execute { input, command } => {
-            let input = eval_input(env, input)?;
-            let mut task_vars = Val::Map(hashmap! {
-                "in".to_owned() => input.clone().convert_to_val(),
-            });
-            env.vars.insert("self".to_owned(), task_vars.clone());
-            let command = eval_exp(env, command)?.as_str()?.to_owned();
-            task_vars
-                .as_map_mut()
-                .unwrap()
-                .insert("command".to_owned(), Val::String(command.clone()));
-            Ok((
-                Task {
-                    input: input.convert_to_hashset(),
-                    command: Some(command),
-                    output: HashSet::new(),
-                },
-                task_vars,
-            ))
-        }
-        crate::Task::Phony { input } => {
-            let input = eval_input(env, input)?;
-            let task_vars = Val::Map(hashmap! {
-                "in".to_owned() => input.clone().convert_to_val(),
-            });
-            env.vars.insert("self".to_owned(), task_vars.clone());
-            Ok((
-                Task {
-                    input: input.convert_to_hashset(),
-                    command: None,
-                    output: HashSet::new(),
-                },
-                task_vars,
-            ))
-        }
+        crate::Task::Execute { input, command } => eval_execute_task(env, input, command),
+        crate::Task::Phony { input } => eval_phony_task(env, input),
         crate::Task::Produce {
             input,
             out,
             command,
-        } => {
-            let input = eval_input(env, input)?;
-            env.vars.insert(
-                "self".to_owned(),
-                Val::Map(hashmap! {
-                    "input".to_owned() => input.clone().convert_to_val(),
-                }),
-            );
-            let output = match eval_exp(env, out)? {
-                Val::List(l) => l
-                    .into_iter()
-                    .map(|s| s.as_str().map(|s| s.to_owned()))
-                    .collect::<Result<HashSet<_>, _>>()?,
-                Val::String(s) => hashset![s],
-                _ => return Err(Error::OutputMustBeStringOrStringList),
-            };
-            let output_val = Val::List(
-                output
-                    .iter()
-                    .map(|s| Val::String(s.to_owned()))
-                    .collect::<Vec<_>>(),
-            );
-            let mut task_vars = Val::Map(hashmap! {
-                "in".to_owned() => input.clone().convert_to_val(),
-                "out".to_owned() => output_val,
-            });
-            env.vars.insert("self".to_owned(), task_vars.clone());
-            let command = eval_exp(env, command)?.as_str()?.to_owned();
-            task_vars
-                .as_map_mut()
-                .unwrap()
-                .insert("command".to_owned(), Val::String(command.clone()));
-            Ok((
-                Task {
-                    input: input.convert_to_hashset(),
-                    command: Some(command),
-                    output,
-                },
-                task_vars,
-            ))
-        }
+        } => eval_produce_task(env, input, out, command),
     }
 }
 
