@@ -33,7 +33,8 @@ fn run() -> Result<(), bake::Error> {
             })?;
             let config = fs::read_to_string("bake.yml").map_err(bake::Error::ConfigLoadError)?;
             let config = bake::parser::config_from_str_src(&config)?;
-            println!("{:#?}", config);
+            let expanded = bake::engine::eval(&mut bake::engine::Env::new_with_std(), &config);
+            println!("{:#?}", expanded);
             unimplemented!()
         }
         SubCommand::Clean(_) => {

@@ -98,7 +98,7 @@ enum Rule {
 
 #[derive(Debug, PartialEq)]
 pub struct Config {
-    rules: HashMap<String, Rule>,
+    rules: Vec<(String, Rule)>,
 }
 
 #[derive(Debug)]

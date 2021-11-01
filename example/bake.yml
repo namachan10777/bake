@@ -7,9 +7,9 @@ rules:
       out: ${ std.ext("c", ".o", source) }
       command: gcc -c {{source}}
   a.out:
-    in: ${ rules.object.out }
+    in: ${ tasks.object.out }
     out: a.out
-    command: gcc {{ self.in }}
+    command: gcc {{ std.join(self.in, " ") }}
   exe:
     in: a.out
     out: exe

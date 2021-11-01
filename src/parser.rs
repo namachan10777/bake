@@ -1,6 +1,5 @@
 use pest::{iterators::Pair, Parser};
 use pest_derive::Parser;
-use std::collections::HashMap;
 use yaml_rust::Yaml;
 
 use crate::Exp;
@@ -397,7 +396,7 @@ pub fn config_from_str_src(src: &str) -> Result<crate::Config, crate::Error> {
                     let val = rule_from_yaml(&key, yaml)?;
                     Ok((key, val))
                 })
-                .collect::<Result<HashMap<_, _>, _>>()?,
+                .collect::<Result<Vec<_>, _>>()?,
         })
     } else {
         Err(crate::Error::ConfigError(
