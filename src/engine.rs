@@ -13,7 +13,8 @@ pub enum FunId {
 #[derive(PartialEq, Debug, Clone)]
 pub struct Function {
     id: FunId,
-    argc: usize,
+    arg_type: Vec<Type>,
+    return_type: Type,
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -56,7 +57,7 @@ impl<'a> Val {
             Ok(map)
         } else {
             Err(Error::MismatchedType {
-                expected: Type::Map,
+                expected: Type::Map(HashMap::new()),
                 real: self.type_of(),
             })
         }
@@ -89,21 +90,24 @@ fn generate_std() -> Val {
         "glob".to_owned() => Val::Function(
             Function {
                 id: FunId::Glob,
-                argc: 1,
+                arg_type: vec![Type::String],
+                return_type: Type::List(Box::new(Type::String))
             },
             vec![]
         ),
         "ext".to_owned() => Val::Function(
             Function {
                 id: FunId::Ext,
-                argc: 3,
+                arg_type: vec![Type::String, Type::String, Type::String],
+                return_type: Type::String,
             },
             vec![]
         ),
         "join".to_owned() => Val::Function(
             Function {
                 id: FunId::Join,
-                argc: 2
+                arg_type: vec![Type::List(Box::new(Type::String)), Type::String],
+                return_type: Type::String,
             },
             vec![]
         )
@@ -145,8 +149,8 @@ pub enum Type {
     Int,
     List(Box<Type>),
     String,
-    Map,
-    Function,
+    Map(HashMap<String, Type>),
+    Function(Vec<Type>, Box<Type>),
     Or(Vec<Type>),
 }
 
@@ -156,13 +160,113 @@ impl Val {
             Val::Bool(_) => Type::Bool,
             Val::Float(_) => Type::Float,
             Val::Int(_) => Type::Int,
-            Val::Function(_, _) => Type::Function,
+            Val::Function(f, args) => Type::Function(
+                f.arg_type[args.len()..].to_vec(),
+                Box::new(f.return_type.clone()),
+            ),
             // TODO: detect correct type
-            Val::List(_) => Type::List(Box::new(Type::Any)),
-            Val::Map(_) => Type::Map,
+            Val::List(l) => {
+                let mut ts = l.iter().map(|v| v.type_of());
+                if let Some(ty_child) = ts.next() {
+                    if ts.all(|ty| ty_child == ty) {
+                        return Type::List(Box::new(ty_child));
+                    }
+                }
+                Type::List(Box::new(Type::Any))
+            }
+            Val::Map(map) => Type::Map(
+                map.iter()
+                    .map(|(key, val)| (key.to_owned(), val.type_of()))
+                    .collect::<HashMap<String, Type>>(),
+            ),
             Val::String(_) => Type::String,
             Val::Symbol(_) => Type::Symbol,
         }
+    }
+}
+
+#[cfg(test)]
+mod test_type_detection {
+
+    use super::*;
+
+    #[test]
+    fn test_primitives() {
+        assert_eq!(Val::Bool(true).type_of(), Type::Bool);
+        assert_eq!(Val::Int(123).type_of(), Type::Int);
+        assert_eq!(Val::Float(3.14).type_of(), Type::Float);
+        assert_eq!(Val::String("hoge".to_owned()).type_of(), Type::String);
+        assert_eq!(Val::Symbol("hoge".to_owned()).type_of(), Type::Symbol);
+    }
+
+    #[test]
+    fn test_list() {
+        assert_eq!(
+            Val::List(Vec::new()).type_of(),
+            Type::List(Box::new(Type::Any))
+        );
+        assert_eq!(
+            Val::List(vec![Val::Int(123)]).type_of(),
+            Type::List(Box::new(Type::Int))
+        );
+        assert_eq!(
+            Val::List(vec![Val::Int(123), Val::Int(123)]).type_of(),
+            Type::List(Box::new(Type::Int))
+        );
+        assert_eq!(
+            Val::List(vec![Val::Int(123), Val::Float(3.14)]).type_of(),
+            Type::List(Box::new(Type::Any))
+        );
+        assert_eq!(
+            Val::List(vec![Val::List(vec![Val::Int(123)])]).type_of(),
+            Type::List(Box::new(Type::List(Box::new(Type::Int))))
+        );
+    }
+
+    #[test]
+    fn test_map() {
+        assert_eq!(
+            Val::Map(hashmap! {
+                "xxx".to_owned() => Val::Int(123),
+                "yyy".to_owned() => Val::Float(3.14),
+            })
+            .type_of(),
+            Type::Map(hashmap! {
+                "xxx".to_owned() => Type::Int,
+                "yyy".to_owned() => Type::Float,
+            })
+        );
+    }
+
+    #[test]
+    fn test_function() {
+        assert_eq!(
+            Val::Function(
+                Function {
+                    id: FunId::Ext,
+                    arg_type: vec![Type::String, Type::String, Type::String],
+                    return_type: Type::String,
+                },
+                vec![]
+            )
+            .type_of(),
+            Type::Function(
+                vec![Type::String, Type::String, Type::String],
+                Box::new(Type::String)
+            )
+        );
+        assert_eq!(
+            Val::Function(
+                Function {
+                    id: FunId::Ext,
+                    arg_type: vec![Type::String, Type::String, Type::String],
+                    return_type: Type::String,
+                },
+                vec![Val::String("hoge".to_owned())]
+            )
+            .type_of(),
+            Type::Function(vec![Type::String, Type::String], Box::new(Type::String))
+        );
     }
 }
 
@@ -194,7 +298,7 @@ fn take_val<'a>(env: &'a Env, fqid: &crate::Fqid) -> Result<&'a Val, Error> {
                 .get(id)
                 .ok_or_else(|| Error::UndefinedVariable(fqid.clone())),
             Ok(v) => Err(Error::MismatchedType {
-                expected: Type::Map,
+                expected: Type::Map(hashmap! { id.to_owned() => Type::Any }),
                 real: v.type_of(),
             }),
             Err(e) => Err(e),
@@ -265,7 +369,7 @@ fn apply_join(args: &[Val]) -> Result<Val, Error> {
 
 fn apply_function(_: &Env, f: &Function, args: &[Val]) -> Result<Val, Error> {
     use std::cmp::Ordering;
-    match f.argc.cmp(&args.len()) {
+    match f.arg_type.len().cmp(&args.len()) {
         Ordering::Equal => match f.id {
             FunId::Ext => apply_ext(args),
             FunId::Glob => apply_glob(args),
@@ -299,7 +403,7 @@ fn eval_exp(env: &Env, exp: &crate::Exp) -> Result<Val, Error> {
             args.append(&mut passed_args);
             apply_function(env, f, args.as_slice())
         }
-        Exp::Symbol(s) => Ok(Val::Symbol(s.to_owned()))
+        Exp::Symbol(s) => Ok(Val::Symbol(s.to_owned())),
     }
 }
 
@@ -386,10 +490,7 @@ fn eval_execute_task(
     ))
 }
 
-fn eval_phony_task(
-    env: &mut Env,
-    input: &crate::Input,
-) -> Result<(TaskSource, Val), Error> {
+fn eval_phony_task(env: &mut Env, input: &crate::Input) -> Result<(TaskSource, Val), Error> {
     let input = eval_input(env, input)?;
     let task_vars = Val::Map(hashmap! {
         "in".to_owned() => input.clone().convert_to_val(),
@@ -444,10 +545,7 @@ fn eval_produce_task(
     ))
 }
 
-fn eval_task(
-    env: &mut Env,
-    task: &crate::Task,
-) -> Result<(TaskSource, Val), Error> {
+fn eval_task(env: &mut Env, task: &crate::Task) -> Result<(TaskSource, Val), Error> {
     match task {
         crate::Task::Execute { input, command } => eval_execute_task(env, input, command),
         crate::Task::Phony { input } => eval_phony_task(env, input),
