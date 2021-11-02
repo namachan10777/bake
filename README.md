@@ -42,7 +42,7 @@ rules:
   * `:test`などとすると`:test`ファイルではなく`test`タスクに依存する
   * GNU Makeの`.PHONY`相当の機能
 
-```
+```yml
 in: main.c
 out: main.o
 command: gcc -c {{ self.in }}
