@@ -22,6 +22,7 @@ pub enum Val {
     Float(f32),
     Bool(bool),
     String(String),
+    Symbol(String),
     List(Vec<Val>),
     Function(Function, Vec<Val>),
     Map(HashMap<String, Val>),
@@ -137,6 +138,7 @@ pub struct Task {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Type {
+    Symbol,
     Any,
     Bool,
     Float,
@@ -159,6 +161,7 @@ impl Val {
             Val::List(_) => Type::List(Box::new(Type::Any)),
             Val::Map(_) => Type::Map,
             Val::String(_) => Type::String,
+            Val::Symbol(_) => Type::Symbol,
         }
     }
 }
@@ -296,6 +299,7 @@ fn eval_exp(env: &Env, exp: &crate::Exp) -> Result<Val, Error> {
             args.append(&mut passed_args);
             apply_function(env, f, args.as_slice())
         }
+        Exp::Symbol(s) => Ok(Val::Symbol(s.to_owned()))
     }
 }
 

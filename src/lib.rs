@@ -32,6 +32,7 @@ pub enum Exp {
     Str(String),
     Template(Template),
     Array(Vec<Exp>),
+    Symbol(String),
     Undefined,
 }
 
@@ -61,6 +62,7 @@ impl std::string::ToString for Exp {
                     .join(", ")
             ),
             Self::Undefined => "<undefined>".to_owned(),
+            Self::Symbol(s) => format!(":{}", s),
         }
     }
 }

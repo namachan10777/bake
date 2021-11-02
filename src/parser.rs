@@ -45,6 +45,7 @@ fn parse_exp(pair: Pair<Rule>) -> Result<crate::Exp, Error> {
                 .join("");
             Ok(Exp::Str(s))
         }
+        Rule::symbol => Ok(Exp::Symbol(pair.as_str()[1..].to_owned())),
         _ => unreachable!(),
     }
 }
@@ -161,6 +162,16 @@ mod test_parse_rules {
             )
             .unwrap(),
             crate::Exp::Var(crate::Fqid::new(&["xxx", "yyy"]))
+        );
+        assert_eq!(
+            parse_exp(
+                BakeParser::parse(Rule::exp, ":xxx")
+                    .unwrap()
+                    .next()
+                    .unwrap()
+            )
+            .unwrap(),
+            crate::Exp::Symbol("xxx".to_owned()),
         );
         assert_eq!(
             parse_exp(
