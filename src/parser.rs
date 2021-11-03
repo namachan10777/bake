@@ -49,6 +49,11 @@ fn parse_exp(pair: Pair<Rule>) -> Result<crate::Exp, Error> {
         Rule::int => Ok(Exp::Int(pair.as_str().parse().unwrap())),
         Rule::float => Ok(Exp::Float(pair.as_str().parse().unwrap())),
         Rule::bool => Ok(Exp::Bool(pair.as_str().parse().unwrap())),
+        Rule::array => pair
+            .into_inner()
+            .map(parse_exp)
+            .collect::<Result<Vec<_>, _>>()
+            .map(Exp::Array),
         _ => unreachable!(),
     }
 }
@@ -296,6 +301,43 @@ mod test_parse_rules {
                     crate::Exp::Var(crate::Fqid::new(&["yyy"]))
                 ]
             )
+        );
+        assert_eq!(
+            parse_exp(BakeParser::parse(Rule::exp, "[]").unwrap().next().unwrap()).unwrap(),
+            crate::Exp::Array(Vec::new())
+        );
+        assert_eq!(
+            parse_exp(
+                BakeParser::parse(Rule::exp, "[123]")
+                    .unwrap()
+                    .next()
+                    .unwrap()
+            )
+            .unwrap(),
+            crate::Exp::Array(vec![crate::Exp::Int(123)])
+        );
+        assert_eq!(
+            parse_exp(
+                BakeParser::parse(Rule::exp, "[123, 42]")
+                    .unwrap()
+                    .next()
+                    .unwrap()
+            )
+            .unwrap(),
+            crate::Exp::Array(vec![crate::Exp::Int(123), crate::Exp::Int(42)])
+        );
+        assert_eq!(
+            parse_exp(
+                BakeParser::parse(Rule::exp, "[123, [42]]")
+                    .unwrap()
+                    .next()
+                    .unwrap()
+            )
+            .unwrap(),
+            crate::Exp::Array(vec![
+                crate::Exp::Int(123),
+                crate::Exp::Array(vec![crate::Exp::Int(42)])
+            ])
         );
     }
 
