@@ -772,4 +772,50 @@ mod test_eval {
             Ok(Val::Symbol("hoge".to_owned()))
         );
     }
+
+    #[test]
+    fn test_eval_exp_funcall() {
+        assert_eq!(
+            eval_exp(
+                &mut Env::new_with_std(),
+                &crate::parser::parse_exp_from_str("std.ext(\"c\", \"o\", \"main.c\")").unwrap()
+            ),
+            Ok(Val::String("main.o".to_owned()))
+        );
+        assert_eq!(
+            eval_exp(
+                &mut Env::new_with_std(),
+                &crate::parser::parse_exp_from_str("std.glob(\"**/*.rs\")").unwrap()
+            ),
+            Ok(Val::List(vec![
+                Val::String("src/engine.rs".to_owned()),
+                Val::String("src/lib.rs".to_owned()),
+                Val::String("src/main.rs".to_owned()),
+                Val::String("src/parser.rs".to_owned()),
+                Val::String("src/util.rs".to_owned()),
+            ]))
+        );
+        assert_eq!(
+            eval_exp(
+                &mut Env::new_with_std(),
+                &crate::parser::parse_exp_from_str("std.join([\"hoge\", \"fuga\"], \".\")")
+                    .unwrap()
+            ),
+            Ok(Val::String("hoge.fuga".to_owned()))
+        );
+        assert_eq!(
+            eval_exp(
+                &mut Env::new_with_std(),
+                &crate::parser::parse_exp_from_str("std.join([\"hoge\"], \".\")").unwrap()
+            ),
+            Ok(Val::String("hoge".to_owned()))
+        );
+        assert_eq!(
+            eval_exp(
+                &mut Env::new_with_std(),
+                &crate::parser::parse_exp_from_str("std.join([], \".\")").unwrap()
+            ),
+            Ok(Val::String("".to_owned()))
+        );
+    }
 }
