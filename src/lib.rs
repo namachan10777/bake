@@ -94,7 +94,7 @@ type Template = Vec<TemplateElem>;
 type TemplateRef<'a> = &'a [TemplateElem];
 
 #[derive(Debug, PartialEq)]
-enum Input {
+pub enum Input {
     #[allow(unused)]
     Single(Exp),
     #[allow(unused)]
@@ -103,7 +103,7 @@ enum Input {
 
 #[derive(Debug, PartialEq)]
 
-enum Task {
+pub enum Task {
     Produce {
         input: Input,
         out: Exp,

@@ -818,4 +818,60 @@ mod test_eval {
             Ok(Val::String("".to_owned()))
         );
     }
+
+    #[test]
+    fn test_eval_task_simple() {
+        let mut env = Env::new_with_std();
+        let src = concat!(
+            "in: ${ std.glob(\"**/*.rs\")}\n",
+            "out: test\n",
+            "command: cargo {{ std.join(self.in, \" \") }}\n"
+        );
+        println!("{}", src);
+        let src = yaml_rust::YamlLoader::load_from_str(src)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+        let task = crate::parser::task_from_yaml("hoge", &src).unwrap();
+        let (tasksource, val) = eval_task(&mut env, &task).unwrap();
+        let (input, output, command) = tasksource;
+        assert_eq!(
+            input,
+            hashset! {
+                "src/engine.rs".to_owned(),
+                "src/lib.rs".to_owned(),
+                "src/main.rs".to_owned(),
+                "src/util.rs".to_owned(),
+                "src/parser.rs".to_owned()
+            }
+        );
+        assert_eq!(
+            output,
+            hashset! {
+                "test".to_owned(),
+            }
+        );
+        assert_eq!(
+            command,
+            Some("cargo src/engine.rs src/lib.rs src/main.rs src/parser.rs src/util.rs".to_owned())
+        );
+        assert_eq!(
+            val,
+            Val::Map(hashmap! {
+                "in".to_owned() => Val::List(vec![
+                    Val::String("src/engine.rs".to_owned()),
+                    Val::String("src/lib.rs".to_owned()),
+                    Val::String("src/main.rs".to_owned()),
+                    Val::String("src/parser.rs".to_owned()),
+                    Val::String("src/util.rs".to_owned()),
+                ]),
+                "out".to_owned() => Val::List(vec![
+                    Val::String("test".to_owned()),
+                ]),
+                "command".to_owned() =>
+                    Val::String("cargo src/engine.rs src/lib.rs src/main.rs src/parser.rs src/util.rs".to_owned())
+            })
+        );
+    }
 }

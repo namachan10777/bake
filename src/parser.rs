@@ -429,7 +429,7 @@ fn check_keys<'a>(
     }
 }
 
-fn task_from_yaml(ctx: &str, yaml: &Yaml) -> Result<crate::Task, crate::Error> {
+pub fn task_from_yaml(ctx: &str, yaml: &Yaml) -> Result<crate::Task, crate::Error> {
     let hash = yaml
         .as_hash()
         .ok_or_else(|| crate::Error::ConfigError(format!("rules.{} must be hash", ctx)))?;
