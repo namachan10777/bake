@@ -289,21 +289,31 @@ pub enum Error {
 fn take_val<'a>(env: &'a Env, fqid: &crate::Fqid) -> Result<&'a Val, Error> {
     let mut id = fqid.body.iter();
     let global_prefix = id.next().ok_or(Error::EmptyIdentifier)?;
-    id.fold(
-        env.vars
-            .get(global_prefix)
-            .ok_or_else(|| Error::UndefinedVariable(fqid.clone())),
-        |acc, id| match acc {
-            Ok(Val::Map(hash)) => hash
-                .get(id)
-                .ok_or_else(|| Error::UndefinedVariable(fqid.clone())),
-            Ok(v) => Err(Error::MismatchedType {
-                expected: Type::Map(hashmap! { id.to_owned() => Type::Any }),
-                real: v.type_of(),
-            }),
-            Err(e) => Err(e),
+    let (_, result) = id.fold(
+        (
+            vec![global_prefix.as_str()],
+            env.vars
+                .get(global_prefix)
+                .ok_or_else(|| Error::UndefinedVariable(crate::Fqid::new(&[global_prefix]))),
+        ),
+        |(mut id_acc, acc), id| {
+            id_acc.push(id.as_str());
+            let result = match acc {
+                Ok(Val::Map(hash)) => hash
+                    .get(id)
+                    .ok_or_else(|| Error::UndefinedVariable(crate::Fqid::new(id_acc.as_slice()))),
+                Ok(v) => Err(Error::MismatchedType {
+                    expected: Type::Map(
+                        hashmap! { id_acc[id_acc.len()-2].to_owned() => Type::Any },
+                    ),
+                    real: v.type_of(),
+                }),
+                Err(e) => Err(e),
+            };
+            (id_acc, result)
         },
-    )
+    );
+    result
 }
 
 fn eval_template(env: &Env, template: crate::TemplateRef) -> Result<String, Error> {
@@ -685,4 +695,39 @@ pub fn eval(env: &mut Env, config: &crate::Config) -> Result<Vec<Task>, Error> {
         })
         .collect::<Result<Vec<_>, _>>();
     Ok(tasks?.into_iter().flatten().collect::<Vec<_>>())
+}
+
+#[cfg(test)]
+mod test_eval {
+    use super::*;
+
+    #[test]
+    fn test_take_val() {
+        let env = Env {
+            vars: hashmap! {
+                "hoge".to_owned() => Val::Map(hashmap! {
+                    "fuga".to_owned() => Val::Map(hashmap! {
+                        "bar".to_owned() => Val::Int(123)
+                    })
+                })
+            },
+        };
+        assert_eq!(
+            take_val(&env, &crate::Fqid::new(&["hoge", "fuga", "bar"])),
+            Ok(&Val::Int(123))
+        );
+        assert_eq!(
+            take_val(&env, &crate::Fqid::new(&["hoge", "fuga", "foo"])),
+            Err(Error::UndefinedVariable(crate::Fqid::new(&[
+                "hoge", "fuga", "foo"
+            ])))
+        );
+        assert_eq!(
+            take_val(&env, &crate::Fqid::new(&["hoge", "fuga", "bar", "foo"])),
+            Err(Error::MismatchedType {
+                expected: Type::Map(hashmap! {"bar".to_owned() => Type::Any}),
+                real: Type::Int,
+            })
+        );
+    }
 }
