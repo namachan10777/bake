@@ -31,6 +31,7 @@ pub enum Exp {
     Call(Fqid, Vec<Exp>),
     Str(String),
     Int(i64),
+    Float(f64),
     Template(Template),
     Array(Vec<Exp>),
     Symbol(String),
@@ -65,6 +66,7 @@ impl std::string::ToString for Exp {
             Self::Undefined => "<undefined>".to_owned(),
             Self::Symbol(s) => format!(":{}", s),
             Self::Int(i) => i.to_string(),
+            Self::Float(f) => f.to_string(),
         }
     }
 }

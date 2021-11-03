@@ -19,8 +19,8 @@ pub struct Function {
 
 #[derive(PartialEq, Debug, Clone)]
 pub enum Val {
-    Int(i32),
-    Float(f32),
+    Int(i64),
+    Float(f64),
     Bool(bool),
     String(String),
     Symbol(String),
@@ -414,6 +414,7 @@ fn eval_exp(env: &Env, exp: &crate::Exp) -> Result<Val, Error> {
             apply_function(env, f, args.as_slice())
         }
         Exp::Int(i) => Ok(Val::Int(*i)),
+        Exp::Float(f) => Ok(Val::Float(*f)),
         Exp::Symbol(s) => Ok(Val::Symbol(s.to_owned())),
     }
 }
