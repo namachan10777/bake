@@ -413,6 +413,7 @@ fn eval_exp(env: &Env, exp: &crate::Exp) -> Result<Val, Error> {
             args.append(&mut passed_args);
             apply_function(env, f, args.as_slice())
         }
+        Exp::Int(i) => Ok(Val::Int(*i)),
         Exp::Symbol(s) => Ok(Val::Symbol(s.to_owned())),
     }
 }

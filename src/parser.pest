@@ -1,13 +1,14 @@
 WHITESPACE    = _{ " " | "\t" | NEWLINE }
 identifier    = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
 symbol        = @{ ":" ~ identifier }
+int           = @{ ("+" | "-")? ~ ASCII_DIGIT+ }
 fqid          =  { identifier ~ ("." ~ identifier)* }
 function      =  { fqid ~ "(" ~ (exp ~ ("," ~ exp)*)? ~ ")" }
 string_escape = @{ "\\\"" | "\\\\" }
 string_elem   = @{ (!"\"" ~ !string_escape ~ ANY)+ }
 string        = ${ "\"" ~ (string_escape | string_elem)* ~ "\""}
 variable      =  { fqid }
-exp           =  { function | variable | string | symbol }
+exp           =  { function | variable | string | symbol | int }
 subst         = !{ "{{" ~ exp ~ "}}" }
 text_escape   = @{ "\\{" | "\\\\" | "\\$" }
 text_elem     = @{ (!"{{" ~ !text_escape ~ ANY)+ }

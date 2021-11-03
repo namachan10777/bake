@@ -9,7 +9,7 @@ use crate::Exp;
 struct BakeParser;
 
 #[derive(Debug)]
-enum Error {}
+pub enum Error {}
 
 fn parse_fqid(pair: Pair<Rule>) -> Result<crate::Fqid, Error> {
     match pair.as_rule() {
@@ -46,8 +46,17 @@ fn parse_exp(pair: Pair<Rule>) -> Result<crate::Exp, Error> {
             Ok(Exp::Str(s))
         }
         Rule::symbol => Ok(Exp::Symbol(pair.as_str()[1..].to_owned())),
+        Rule::int => Ok(Exp::Int(pair.as_str().parse().unwrap())),
         _ => unreachable!(),
     }
+}
+
+pub fn parse_exp_from_str(src: &str) -> Result<crate::Exp, crate::Error> {
+    let pair = BakeParser::parse(Rule::exp, src)
+        .map_err(|e| crate::Error::SyntaxError(e.line_col))?
+        .next()
+        .unwrap();
+    Ok(parse_exp(pair).unwrap())
 }
 
 fn parse_template(pair: Pair<Rule>) -> Result<crate::Template, Error> {
@@ -142,6 +151,30 @@ mod test_parse_rules {
             )
             .unwrap(),
             crate::Exp::Str("xxx".to_owned())
+        );
+        assert_eq!(
+            parse_exp(BakeParser::parse(Rule::exp, "123").unwrap().next().unwrap()).unwrap(),
+            crate::Exp::Int(123)
+        );
+        assert_eq!(
+            parse_exp(
+                BakeParser::parse(Rule::exp, "+123")
+                    .unwrap()
+                    .next()
+                    .unwrap()
+            )
+            .unwrap(),
+            crate::Exp::Int(123)
+        );
+        assert_eq!(
+            parse_exp(
+                BakeParser::parse(Rule::exp, "-123")
+                    .unwrap()
+                    .next()
+                    .unwrap()
+            )
+            .unwrap(),
+            crate::Exp::Int(-123)
         );
         assert_eq!(
             parse_exp(
