@@ -1,5 +1,5 @@
-use clap::Parser;
-use std::{env::set_current_dir, fs, process::exit};
+use clap::{IntoApp, Parser};
+use std::{env::set_current_dir, fs, io, process::exit};
 use termion::color;
 
 #[derive(Parser)]
@@ -13,6 +13,21 @@ enum SubCommand {
     Build(SubCommandOpts),
     Clean(SubCommandOpts),
     Graph(SubCommandOpts),
+    Completion(CompletionOpts),
+}
+
+#[derive(Parser)]
+struct CompletionOpts {
+    #[clap(
+        short,
+        long,
+        possible_value = "fish",
+        possible_value = "zsh",
+        possible_value = "bash",
+        possible_value = "elvish",
+        possible_value = "powershell"
+    )]
+    shell: String,
 }
 
 #[derive(Parser)]
@@ -42,6 +57,18 @@ fn run() -> Result<(), bake::Error> {
         }
         SubCommand::Graph(_) => {
             unimplemented!()
+        }
+        SubCommand::Completion(opts) => {
+            let shell = match opts.shell.as_str() {
+                "fish" => clap_generate::Shell::Fish,
+                "zsh" => clap_generate::Shell::Zsh,
+                "bash" => clap_generate::Shell::Bash,
+                "elvish" => clap_generate::Shell::Elvish,
+                "Powershell" => clap_generate::Shell::PowerShell,
+                _ => unreachable!(),
+            };
+            clap_generate::generate(shell, &mut Opts::into_app(), "bake", &mut io::stdout());
+            Ok(())
         }
     }
 }
