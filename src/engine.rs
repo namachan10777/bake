@@ -733,4 +733,43 @@ mod test_eval {
             })
         );
     }
+
+    #[test]
+    fn test_eval_exp_primitive() {
+        assert_eq!(
+            eval_exp(
+                &mut Env::new_with_std(),
+                &crate::parser::parse_exp_from_str("\"hoge\"").unwrap()
+            ),
+            Ok(Val::String("hoge".to_owned()))
+        );
+        assert_eq!(
+            eval_exp(
+                &mut Env::new_with_std(),
+                &crate::parser::parse_exp_from_str("123").unwrap()
+            ),
+            Ok(Val::Int(123))
+        );
+        assert_eq!(
+            eval_exp(
+                &mut Env::new_with_std(),
+                &crate::parser::parse_exp_from_str("-3.14").unwrap()
+            ),
+            Ok(Val::Float(-3.14))
+        );
+        assert_eq!(
+            eval_exp(
+                &mut Env::new_with_std(),
+                &crate::parser::parse_exp_from_str("false").unwrap()
+            ),
+            Ok(Val::Bool(false))
+        );
+        assert_eq!(
+            eval_exp(
+                &mut Env::new_with_std(),
+                &crate::parser::parse_exp_from_str(":hoge").unwrap()
+            ),
+            Ok(Val::Symbol("hoge".to_owned()))
+        );
+    }
 }
