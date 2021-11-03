@@ -415,6 +415,7 @@ fn eval_exp(env: &Env, exp: &crate::Exp) -> Result<Val, Error> {
         }
         Exp::Int(i) => Ok(Val::Int(*i)),
         Exp::Float(f) => Ok(Val::Float(*f)),
+        Exp::Bool(b) => Ok(Val::Bool(*b)),
         Exp::Symbol(s) => Ok(Val::Symbol(s.to_owned())),
     }
 }

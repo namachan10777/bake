@@ -32,6 +32,7 @@ pub enum Exp {
     Str(String),
     Int(i64),
     Float(f64),
+    Bool(bool),
     Template(Template),
     Array(Vec<Exp>),
     Symbol(String),
@@ -67,6 +68,7 @@ impl std::string::ToString for Exp {
             Self::Symbol(s) => format!(":{}", s),
             Self::Int(i) => i.to_string(),
             Self::Float(f) => f.to_string(),
+            Self::Bool(b) => b.to_string(),
         }
     }
 }

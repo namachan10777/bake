@@ -48,6 +48,7 @@ fn parse_exp(pair: Pair<Rule>) -> Result<crate::Exp, Error> {
         Rule::symbol => Ok(Exp::Symbol(pair.as_str()[1..].to_owned())),
         Rule::int => Ok(Exp::Int(pair.as_str().parse().unwrap())),
         Rule::float => Ok(Exp::Float(pair.as_str().parse().unwrap())),
+        Rule::bool => Ok(Exp::Bool(pair.as_str().parse().unwrap())),
         _ => unreachable!(),
     }
 }
@@ -206,6 +207,26 @@ mod test_parse_rules {
             )
             .unwrap(),
             crate::Exp::Float(-3.14)
+        );
+        assert_eq!(
+            parse_exp(
+                BakeParser::parse(Rule::exp, "true")
+                    .unwrap()
+                    .next()
+                    .unwrap()
+            )
+            .unwrap(),
+            crate::Exp::Bool(true)
+        );
+        assert_eq!(
+            parse_exp(
+                BakeParser::parse(Rule::exp, "false")
+                    .unwrap()
+                    .next()
+                    .unwrap()
+            )
+            .unwrap(),
+            crate::Exp::Bool(false)
         );
         assert_eq!(
             parse_exp(
